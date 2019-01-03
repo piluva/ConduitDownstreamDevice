@@ -33,7 +33,7 @@ static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;De
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
 
-char payload[1024];
+char *send_json_string = NULL; //final json string to iothub
 
 //mqtt lora client variables
 static const char* TOPIC_NAME_A = "lora/+/up";
@@ -88,23 +88,37 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
         QosToString(mqttmessage_getQosType(msgHandle) ),
         mqttmessage_getTopicName(msgHandle)
         );
-        
+
   // parse incoming mqtt lora message as parson
 	JSON_Value *lora_value=NULL;
 	lora_value = json_parse_string(appMsg->message);
 	JSON_Object *lora_json;
 	if(json_value_get_type(lora_value) == JSONObject)
 	{
-		lora_json = json_value_get_object(lora_value);
-		const char *deveui = json_object_get_string(lora_json, "deveui");
-		if(deveui!=NULL)(void)printf("%s", deveui);
+    lora_json = json_value_get_object(lora_value);
+
+    //make json to send
+    JSON_Value *root_value = json_value_init_object();
+    JSON_Object *root_object = json_value_get_object(root_value);
+
+    //put desired propieties on json to send
+    const char *time_ = json_object_get_string(lora_json, "time");
+		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
+
+    const char *deveui = json_object_get_string(lora_json, "deveui");
+		if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
+
+    send_json_string = json_serialize_to_string_pretty(root_value);
+    json_value_free(root_value);
+
+    //set flag to send
+   new_message = true;
+
 	}
 	if(lora_value)json_value_free(lora_value);
 
-  //set flag to send
-	new_message = true;
+  (void)printf("\r\n");
 
-	(void)printf("\r\n");
 }
 
 static void OnCloseComplete(void* context)
@@ -272,16 +286,15 @@ int main(void)
 	IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
 	protocol = MQTT_Protocol;
 	IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
-	IOTHUB_MESSAGE_HANDLE message_handle;
 
 	const char* telemetry_msg = "test_message";
-    char *cert_string = NULL;
+  char *cert_string = NULL;
 
 
-    printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
+  printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
 
 	// Used to initialize IoTHub SDK subsystem
-    (void)IoTHub_Init();
+  (void)IoTHub_Init();
 
  	(void)printf("Creating IoTHub handle\r\n");
     // Create the iothub handle here
@@ -356,8 +369,10 @@ int main(void)
 						if(new_message){
 							new_message = false;
 
+              IOTHUB_MESSAGE_HANDLE message_handle;
+
 							// Construct the iothub message from a string
-							message_handle = IoTHubMessage_CreateFromString(payload);
+							message_handle = IoTHubMessage_CreateFromString(send_json_string);
 
 							// Set Message property
 							(void)IoTHubMessage_SetMessageId(message_handle, "MSG_ID");
@@ -368,14 +383,16 @@ int main(void)
 							// Add custom properties to message
 							//(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
 
-							(void)printf("Sending message %d to Edge Hub\r\n", 1);
+							(void)printf("Sending message: %s\r\n", send_json_string);
 							IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
+
+              json_free_serialized_string(send_json_string);
 
 							// The message is copied to the sdk so the we can destroy it
 							IoTHubMessage_Destroy(message_handle);
 						}
                     } while (g_continue);
-            	    }
+                  }
                 xio_close(xio, OnCloseComplete, NULL);
 
                 // Wait for the close connection gets called
