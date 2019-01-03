@@ -35,7 +35,7 @@ static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.p
 
 char payload[1024];
 
-//mqtt lora
+//mqtt lora client variables
 static const char* TOPIC_NAME_A = "lora/+/up";
 
 static uint16_t PACKET_ID_VALUE = 11;
@@ -83,16 +83,15 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
-    (void)printf("Incoming Msg: Packet Id: %d\r\nQOS: %s\r\nTopic Name: %s\r\nIs Retained: %s\r\nIs Duplicate: %s\r\nDEVEUI: ", mqttmessage_getPacketId(msgHandle),
+    (void)printf("Incoming Msg: Packet Id: %d\r\nQOS: %s\r\nTopic Name: %s\r\n",
+        mqttmessage_getPacketId(msgHandle),
         QosToString(mqttmessage_getQosType(msgHandle) ),
-        mqttmessage_getTopicName(msgHandle),
-        mqttmessage_getIsRetained(msgHandle) ? "true" : "false",
-        mqttmessage_getIsDuplicateMsg(msgHandle) ? "true" : "false"
+        mqttmessage_getTopicName(msgHandle)
         );
-		 
+
 	for (size_t index = 0; index < 1024; index++)
 		{
-	
+
 			if(index >= appMsg->length)
 			{
 				payload[index] = '\0';
@@ -102,18 +101,19 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 			}
 		}
 
-	JSON_Value *root_value=NULL;
-	root_value = json_parse_string(payload);
-	JSON_Object *root_object;
-	if(json_value_get_type(root_value) == JSONObject)
+  // parse incoming mqtt lora message as parson
+	JSON_Value *lora_value=NULL;
+	lora_value = json_parse_string(payload);
+	JSON_Object *lora_json;
+	if(json_value_get_type(lora_value) == JSONObject)
 	{
-		root_object = json_value_get_object(root_value);
-		const char *deveui = json_object_get_string(root_object, "deveui");
+		lora_json = json_value_get_object(lora_value);
+		const char *deveui = json_object_get_string(lora_json, "deveui");
 		if(deveui!=NULL)(void)printf("%s", deveui);
 	}
-	if(root_value)json_value_free(root_value);
+	if(lora_value)json_value_free(lora_value);
 
-	lastMsgHandle = msgHandle;
+  //set flag to send
 	new_message = true;
 
 	(void)printf("\r\n");
@@ -140,7 +140,7 @@ static void OnOperationComplete(MQTT_CLIENT_HANDLE handle, MQTT_CLIENT_EVENT_RES
             SUBSCRIBE_PAYLOAD subscribe[1];
             subscribe[0].subscribeTopic = TOPIC_NAME_A;
             subscribe[0].qosReturn = DELIVER_AT_MOST_ONCE;
-           
+
             if (mqtt_client_subscribe(handle, PACKET_ID_VALUE++, subscribe, sizeof(subscribe) / sizeof(subscribe[0])) != 0)
             {
                 (void)printf("%d: mqtt_client_subscribe failed\r\n", __LINE__);
@@ -285,7 +285,7 @@ int main(void)
 	protocol = MQTT_Protocol;
 	IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
 	IOTHUB_MESSAGE_HANDLE message_handle;
-    
+
 	const char* telemetry_msg = "test_message";
     char *cert_string = NULL;
 
@@ -298,7 +298,7 @@ int main(void)
  	(void)printf("Creating IoTHub handle\r\n");
     // Create the iothub handle here
     device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
-    
+
 	if (device_handle == NULL)
     {
         (void)printf("Failure creating device client handle.  Hint: Check you connection string.\r\n");
@@ -328,7 +328,7 @@ int main(void)
         bool urlEncodeOn = true;
         (void)IoTHubDeviceClient_SetOption(device_handle, OPTION_AUTO_URL_ENCODE_DECODE, &urlEncodeOn);
 
-		//Mqtt client to recive lora messages. from conduit. localhost lora/+/up
+		    //Mqtt client to recive lora messages from conduit lora server. localhost lora/+/up
         MQTT_CLIENT_HANDLE mqttHandle = mqtt_client_init(OnRecvCallback, OnOperationComplete, NULL, OnErrorComplete, NULL);
         if (mqttHandle == NULL)
         {
@@ -365,9 +365,9 @@ int main(void)
                     do
                     {
                         mqtt_client_dowork(mqttHandle);
-						if(new_message){ 
+						if(new_message){
 							new_message = false;
-							
+
 							// Construct the iothub message from a string
 							message_handle = IoTHubMessage_CreateFromString(payload);
 
