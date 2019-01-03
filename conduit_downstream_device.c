@@ -27,8 +27,8 @@
 #include "azure_c_shared_utility/socketio.h"
 
 // Connection String
-//static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit2;SharedAccessKey=dS0GsY94Wlgsf1rDlRqTED0b54smjkypNFXrP7yrctg=;GatewayHostName=192.168.1.44";
-static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit1;SharedAccessKey=bj6Prj/C+hE0MjZIy4TGVp0QHcfEDUuJdGIUuqyhMWc=;GatewayHostName=192.168.1.26";
+static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit2;SharedAccessKey=dS0GsY94Wlgsf1rDlRqTED0b54smjkypNFXrP7yrctg=;GatewayHostName=192.168.1.44";
+//static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit1;SharedAccessKey=bj6Prj/C+hE0MjZIy4TGVp0QHcfEDUuJdGIUuqyhMWc=;GatewayHostName=192.168.1.26";
 
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
@@ -380,7 +380,7 @@ int main(void)
 							// Add custom properties to message
 							//(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
 
-							(void)printf("Sending message %d to Edge Hub\r\n", (int)(index + 1));
+							(void)printf("Sending message %d to Edge Hub\r\n", 1);
 							IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
 
 							// The message is copied to the sdk so the we can destroy it
