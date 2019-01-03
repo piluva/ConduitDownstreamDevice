@@ -88,22 +88,10 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
         QosToString(mqttmessage_getQosType(msgHandle) ),
         mqttmessage_getTopicName(msgHandle)
         );
-
-	for (size_t index = 0; index < 1024; index++)
-		{
-
-			if(index >= appMsg->length)
-			{
-				payload[index] = '\0';
-			}else{
-				payload[index] = appMsg->message[index];
-				//(void)printf("%s", appMsg->message[index]);
-			}
-		}
-
+        
   // parse incoming mqtt lora message as parson
 	JSON_Value *lora_value=NULL;
-	lora_value = json_parse_string(payload);
+	lora_value = json_parse_string(appMsg->message);
 	JSON_Object *lora_json;
 	if(json_value_get_type(lora_value) == JSONObject)
 	{
