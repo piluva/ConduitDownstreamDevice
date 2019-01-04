@@ -26,10 +26,6 @@
 #include "azure_c_shared_utility/shared_util_options.h"
 #include "azure_c_shared_utility/socketio.h"
 
-// Connection String
-static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit2;SharedAccessKey=dS0GsY94Wlgsf1rDlRqTED0b54smjkypNFXrP7yrctg=;GatewayHostName=192.168.1.44";
-//static const char* connectionString = "HostName=mqttHubCert.azure-devices.net;DeviceId=mqttConduit1;SharedAccessKey=bj6Prj/C+hE0MjZIy4TGVp0QHcfEDUuJdGIUuqyhMWc=;GatewayHostName=192.168.1.26";
-
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
 
@@ -50,8 +46,6 @@ static size_t g_message_count_send_confirmations = 0;
 MQTT_MESSAGE_HANDLE lastMsgHandle;
 
 #define PORT_NUM_UNENCRYPTED        1883
-
-#define DEFAULT_MSG_TO_SEND         1
 
 static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void* userContextCallback)
 {
@@ -278,27 +272,74 @@ static char *obtain_edge_ca_certificate(void)
     return result;
 }
 
+static char *getConnectionString(){
+  char *result = NULL;
+  FILE *cs_file;
+
+  cs_file = fopen("config", "r");
+  if (cs_file == NULL)
+  {
+      printf("Error could not open config file for reading \r\n");
+  }
+  else
+  {
+      size_t file_size;
+
+      (void)fseek(cs_file, 0, SEEK_END);
+      file_size = ftell(cs_file);
+      (void)fseek(cs_file, 0, SEEK_SET);
+      // increment size to hold the null term
+      file_size += 1;
+
+      if (file_size == 0) // check wrap around
+      {
+          printf("Config file size invalid\r\n" );
+      }
+      else
+      {
+          result = (char*)calloc(file_size, 1);
+          if (result == NULL)
+          {
+              printf("Could not allocate memory to hold the connection string\r\n");
+          }
+          else
+          {
+              // copy the file into the buffer
+              size_t read_size = fread(result, 1, file_size - 1, cs_file);
+              if (read_size != file_size - 1)
+              {
+                  printf("Error reading file\r\n ");
+                  free(result);
+                  result = NULL;
+              }
+          }
+      }
+      (void)fclose(cs_file);
+  }
+
+  (void)printf("Connection string: %s\r\n",result);
+  return result;
+}
 
 ///// ------------------------------------   MAIN
 int main(void)
 {
+  (void)printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
 
 	IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
 	protocol = MQTT_Protocol;
 	IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
 
-	const char* telemetry_msg = "test_message";
   char *cert_string = NULL;
 
-
-  printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
-
-	// Used to initialize IoTHub SDK subsystem
-  (void)IoTHub_Init();
+  (void)IoTHub_Init(); // Used to initialize IoTHub SDK subsystem
 
  	(void)printf("Creating IoTHub handle\r\n");
-    // Create the iothub handle here
-    device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
+
+  char *connectionString = getConnectionString(); //read connection string from config file
+
+  // Create the iothub handle here
+  device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
 
 	if (device_handle == NULL)
     {
