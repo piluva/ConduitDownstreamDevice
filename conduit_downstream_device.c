@@ -25,6 +25,8 @@
 #include "azure_c_shared_utility/platform.h"
 #include "azure_c_shared_utility/shared_util_options.h"
 #include "azure_c_shared_utility/socketio.h"
+#include "azure_c_shared_utility/base64.h"
+
 
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
@@ -79,7 +81,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
     (void)printf("Incoming Msg: Packet Id: %d\r\nQOS: %s\r\nTopic Name: %s\r\n",
         mqttmessage_getPacketId(msgHandle),
-        QosToString(mqttmessage_getQosType(msgHandle) ),
+        QosToString(mqttmessage_getQosType(msgHandle)),
         mqttmessage_getTopicName(msgHandle)
         );
 
@@ -96,11 +98,17 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     JSON_Object *root_object = json_value_get_object(root_value);
 
     //put desired propieties on json to send
+    const char *deveui = json_object_get_string(lora_json, "deveui");
+    if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
+
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
 
-    const char *deveui = json_object_get_string(lora_json, "deveui");
-		if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
+    BUFFER_HANDLE decoded_payload;
+    const char *data = json_object_get_string(lora_json, "data");
+    const unsigned char* payload = BUFFER_u_char(decoded_payload);
+    if(data!=NULL)(void)json_object_set_string(root_object, "data", payload);
+    BUFFER_delete(decoded_payload);
 
     send_json_string = json_serialize_to_string_pretty(root_value);
     json_value_free(root_value);
