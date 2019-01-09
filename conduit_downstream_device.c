@@ -31,8 +31,6 @@
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
 
-char *send_json_string = NULL; //final json string to iothub
-
 //mqtt lora client variables
 static const char* TOPIC_NAME_A = "lora/+/up";
 
@@ -46,6 +44,11 @@ static bool new_message = false;
 static size_t g_message_count_send_confirmations = 0;
 
 MQTT_MESSAGE_HANDLE lastMsgHandle;
+
+IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
+
+const char* prevA = "X";
+const char* prevB = "X";
 
 #define PORT_NUM_UNENCRYPTED        1883
 
@@ -128,6 +131,31 @@ static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void
     (void)printf("Confirmation callback received for message %zu with result %s\r\n", g_message_count_send_confirmations, ENUM_TO_STRING(IOTHUB_CLIENT_CONFIRMATION_RESULT, result));
 }
 
+void sendToHub(char* message){
+ (void)printf("Sending message: %s\r\n", message);
+
+  IOTHUB_MESSAGE_HANDLE message_handle;
+
+  // Construct the iothub message from a string
+  message_handle = IoTHubMessage_CreateFromString(message);
+
+  // Set Message property
+  (void)IoTHubMessage_SetMessageId(message_handle, "MSG_ID");
+  (void)IoTHubMessage_SetCorrelationId(message_handle, "CORE_ID");
+  //(void)IoTHubMessage_SetContentTypeSystemProperty(message_handle, "application%2fjson");
+  (void)IoTHubMessage_SetContentEncodingSystemProperty(message_handle, "utf-8");
+
+  // Add custom properties to message
+  //(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
+
+  IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
+
+  json_free_serialized_string(message);
+
+  // The message is copied to the sdk so the we can destroy it
+  IoTHubMessage_Destroy(message_handle);
+}
+
 /**
     MQTT LORA FUNCTIONS
 */
@@ -149,9 +177,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
-    (void)printf("Incoming Msg: Packet Id: %d\r\nQOS: %s\r\nTopic Name: %s\r\n",
-        mqttmessage_getPacketId(msgHandle),
-        QosToString(mqttmessage_getQosType(msgHandle)),
+    (void)printf("\r\nIncoming on topic: %s\r\n",
         mqttmessage_getTopicName(msgHandle)
         );
 
@@ -159,6 +185,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 	JSON_Value *lora_value=NULL;
 	lora_value = json_parse_string(appMsg->message);
 	JSON_Object *lora_json;
+
 	if(json_value_get_type(lora_value) == JSONObject)
 	{
     lora_json = json_value_get_object(lora_value);
@@ -175,30 +202,46 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     printf("este id = %s\r\n", id);
     //if(deveui!=NULL){
     (void)json_object_set_string(root_object, "id", id);
-    //(void)json_object_set_string(root_object, "test", "caca");
-  //  }else{
-  //    (void)json_object_set_string(root_object, "id", "niet");
+  //}else{
+    //(void)json_object_set_string(root_object, "id", "niet");
   //  }
 
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
 
-    //BUFFER_HANDLE decoded_payload;
     const char *data = json_object_get_string(lora_json, "data");
-    //const unsigned char* payload = BUFFER_u_char(decoded_payload);
-    if(data!=NULL)(void)json_object_set_string(root_object, "data", data);
-    //BUFFER_delete(decoded_payload);
+    const unsigned char* payload = BUFFER_u_char(Base64_Decoder(data));
+    (void)printf("Payload: %s\r\n", payload);
 
-    send_json_string = json_serialize_to_string_pretty(root_value);
+    JSON_Value *lora_payload_value =NULL;
+  	lora_payload_value = json_parse_string(payload);
+  	JSON_Object *lora_payload_json;
+    lora_payload_json = json_value_get_object(lora_payload_value);
+
+    if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM01");
+    (void)printf("Payload: %s\r\n", prevA);
+    const char* A= json_object_get_string(lora_payload_json, "stateA");
+    if(prevA != A ){
+      prevA = A;
+      if(data!=NULL)(void)json_object_set_string(root_object, "estado", (char*) A);
+      sendToHub(json_serialize_to_string_pretty(root_value));
+    }
+
+    if(prevB != json_object_get_string(lora_payload_json, "stateB")){
+      prevB =json_object_get_string(lora_payload_json, "stateB");
+      if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM02");
+      if(data!=NULL)(void)json_object_set_string(root_object, "estado", json_object_get_string(lora_payload_json, "stateB"));
+      sendToHub(json_serialize_to_string_pretty(root_value));
+    }
+    json_value_free(lora_payload_value);
+
     json_value_free(root_value);
 
     //set flag to send
-   new_message = true;
+
 
 	}
 	if(lora_value)json_value_free(lora_value);
-
-  (void)printf("\r\n");
 
 }
 
@@ -415,7 +458,6 @@ int main(void)
 
 	IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
 	protocol = MQTT_Protocol;
-	IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
 
   char *cert_string = NULL;
 
@@ -497,31 +539,7 @@ int main(void)
                     do
                     {
                         mqtt_client_dowork(mqttHandle);
-						if(new_message){
-							new_message = false;
 
-              IOTHUB_MESSAGE_HANDLE message_handle;
-
-							// Construct the iothub message from a string
-							message_handle = IoTHubMessage_CreateFromString(send_json_string);
-
-							// Set Message property
-							(void)IoTHubMessage_SetMessageId(message_handle, "MSG_ID");
-							(void)IoTHubMessage_SetCorrelationId(message_handle, "CORE_ID");
-							//(void)IoTHubMessage_SetContentTypeSystemProperty(message_handle, "application%2fjson");
-							(void)IoTHubMessage_SetContentEncodingSystemProperty(message_handle, "utf-8");
-
-							// Add custom properties to message
-							//(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
-
-							(void)printf("Sending message: %s\r\n", send_json_string);
-							IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
-
-              json_free_serialized_string(send_json_string);
-
-							// The message is copied to the sdk so the we can destroy it
-							IoTHubMessage_Destroy(message_handle);
-						}
                     } while (g_continue);
                   }
                 xio_close(xio, OnCloseComplete, NULL);
