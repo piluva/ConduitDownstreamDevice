@@ -31,8 +31,6 @@
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
 
-char *send_json_string = NULL; //final json string to iothub
-
 //mqtt lora client variables
 static const char* TOPIC_NAME_A = "lora/+/up";
 
@@ -48,6 +46,9 @@ static size_t g_message_count_send_confirmations = 0;
 MQTT_MESSAGE_HANDLE lastMsgHandle;
 
 IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
+
+const char* prevA = "X";
+const char* prevB = "X";
 
 #define PORT_NUM_UNENCRYPTED        1883
 
@@ -75,7 +76,6 @@ void sendToHub(char* message){
 
   // Add custom properties to message
   //(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
-
 
   IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
 
@@ -126,7 +126,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
     //put desired propieties on json to send
     const char *deveui = json_object_get_string(lora_json, "deveui");
-    if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
+    //if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
 
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
@@ -140,15 +140,27 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
   	JSON_Object *lora_payload_json;
     lora_payload_json = json_value_get_object(lora_payload_value);
 
-    if(data!=NULL)(void)json_object_set_string(root_object, "payload", json_object_get_string(lora_payload_json, "stateA"));
+    if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM01");
+    (void)printf("Payload: %s\r\n", prevA);
+    const char* A= json_object_get_string(lora_payload_json, "stateA");
+    if(prevA != A ){
+      prevA = A;
+      if(data!=NULL)(void)json_object_set_string(root_object, "estado", (char*) A);
+      sendToHub(json_serialize_to_string_pretty(root_value));
+    }
 
+    if(prevB != json_object_get_string(lora_payload_json, "stateB")){
+      prevB =json_object_get_string(lora_payload_json, "stateB");
+      if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM02");
+      if(data!=NULL)(void)json_object_set_string(root_object, "estado", json_object_get_string(lora_payload_json, "stateB"));
+      sendToHub(json_serialize_to_string_pretty(root_value));
+    }
     json_value_free(lora_payload_value);
 
-    send_json_string = json_serialize_to_string_pretty(root_value);
     json_value_free(root_value);
 
     //set flag to send
-   sendToHub(send_json_string);
+
 
 	}
 	if(lora_value)json_value_free(lora_value);
