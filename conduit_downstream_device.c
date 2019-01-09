@@ -79,9 +79,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
-    (void)printf("Incoming Msg: Packet Id: %d\r\nQOS: %s\r\nTopic Name: %s\r\n",
-        mqttmessage_getPacketId(msgHandle),
-        QosToString(mqttmessage_getQosType(msgHandle)),
+    (void)printf("\r\nIncoming on topic: %s\r\n",
         mqttmessage_getTopicName(msgHandle)
         );
 
@@ -89,6 +87,7 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 	JSON_Value *lora_value=NULL;
 	lora_value = json_parse_string(appMsg->message);
 	JSON_Object *lora_json;
+
 	if(json_value_get_type(lora_value) == JSONObject)
 	{
     lora_json = json_value_get_object(lora_value);
@@ -106,8 +105,13 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
     BUFFER_HANDLE decoded_payload;
     const char *data = json_object_get_string(lora_json, "data");
-    const unsigned char* payload = BUFFER_u_char(decoded_payload);
-    if(data!=NULL)(void)json_object_set_string(root_object, "data", payload);
+    const unsigned char* payload = BUFFER_u_char(Base64_Decoder(data));
+    (void)printf("Payload: %s\r\n", payload);
+    JSON_Value *lora_payload_value =NULL;
+  	lora_payload_value = json_parse_string(payload);
+  	JSON_Object *lora_payload_json;
+    lora_payload_json = json_value_get_object(lora_payload_value);
+    if(data!=NULL)(void)json_object_set_string(root_object, "payload", json_object_get_string(lora_payload_json, "state"));
     BUFFER_delete(decoded_payload);
 
     send_json_string = json_serialize_to_string_pretty(root_value);
@@ -118,8 +122,6 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
 	}
 	if(lora_value)json_value_free(lora_value);
-
-  (void)printf("\r\n");
 
 }
 
