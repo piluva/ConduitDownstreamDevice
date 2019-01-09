@@ -49,6 +49,77 @@ MQTT_MESSAGE_HANDLE lastMsgHandle;
 
 #define PORT_NUM_UNENCRYPTED        1883
 
+// json values
+//char* deveui;
+//char* Id;
+
+const unsigned char* TwinPayload;
+/**
+    parse from incoming json twin
+*/
+/*static Sensor* parseFromJson(const char* json, DEVICE_TWIN_UPDATE_STATE update_state)
+{
+    JSON_Value* root_value = json_parse_string(json);
+    JSON_Object* root_object = json_value_get_object(root_value);
+
+    // Only desired properties:
+    JSON_Value* id_value;
+
+    JSON_Object* devices = json_object_dotget_object(root_object, "desired.devices");
+
+    if (update_state == DEVICE_TWIN_UPDATE_COMPLETE)
+    {
+        Id = json_object_dotget_string(devices, "");
+        deveui = json_object_dotget_value(root_object, "desired.deveui");
+    }
+    else
+    {
+        Id = json_object_dotget_value(root_object, "Id");
+        deveui = json_object_dotget_value(root_object, "deveui");
+    }
+00-80-00-00-00-01-05-cc
+00-80-00-00-00-01-05-ca
+CCONEM01
+    return Id;
+}*/
+
+const char* idFromEUI(const char* deveui) {
+
+  JSON_Value* root_value = json_parse_string(TwinPayload);
+  JSON_Object* Twin_Object = json_value_get_object(root_value);
+
+  JSON_Object* desired_devices = json_object_dotget_object(Twin_Object, "desired.devices");
+  //JSON_Object* device = json_object_get_object(desired_devices, "00-80-00-00-00-01-05-cc");
+
+  char str[27]; //+1 for NULL character.
+  strcpy(str, deveui);
+  strcat(str, ".id");
+  (void) printf("ESTE ES EL str: %s\r\n", str);
+  //const char* id = json_object_dotget_string(desired_devices, str);
+  const char* id = json_object_dotget_string(desired_devices, "desired.devices.00-80-00-00-00-01-05-cc.id");
+  (void) printf("ESTE ES EL ID: %s\r\n", id);
+
+  json_value_free(root_value);
+
+  return id;
+}
+
+/**
+    twin callback
+*/
+static void deviceTwinCallback(DEVICE_TWIN_UPDATE_STATE update_state, const unsigned char* payLoad, size_t size, void* userContextCallback)
+{
+    (void)update_state;
+    (void)size;
+
+    if (update_state == DEVICE_TWIN_UPDATE_COMPLETE)
+    {
+        TwinPayload = payLoad;
+    }
+    (void) printf("callback llamado\r\n");
+    (void) printf("payload: %s\r\n", payLoad);
+}
+
 static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void* userContextCallback)
 {
     (void)userContextCallback;
@@ -75,7 +146,6 @@ static const char* QosToString(QOS_VALUE qosValue)
 
 static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 {
-
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
@@ -99,16 +169,25 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
     //put desired propieties on json to send
     const char *deveui = json_object_get_string(lora_json, "deveui");
-    if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
+    printf("este deveui = %s\r\n", deveui);
+    //replace deveui with id
+    const char* id = idFromEUI(deveui);
+    printf("este id = %s\r\n", id);
+    //if(deveui!=NULL){
+    (void)json_object_set_string(root_object, "id", id);
+    //(void)json_object_set_string(root_object, "test", "caca");
+  //  }else{
+  //    (void)json_object_set_string(root_object, "id", "niet");
+  //  }
 
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
 
-    BUFFER_HANDLE decoded_payload;
+    //BUFFER_HANDLE decoded_payload;
     const char *data = json_object_get_string(lora_json, "data");
-    const unsigned char* payload = BUFFER_u_char(decoded_payload);
-    if(data!=NULL)(void)json_object_set_string(root_object, "data", payload);
-    BUFFER_delete(decoded_payload);
+    //const unsigned char* payload = BUFFER_u_char(decoded_payload);
+    if(data!=NULL)(void)json_object_set_string(root_object, "data", data);
+    //BUFFER_delete(decoded_payload);
 
     send_json_string = json_serialize_to_string_pretty(root_value);
     json_value_free(root_value);
@@ -378,7 +457,10 @@ int main(void)
         bool urlEncodeOn = true;
         (void)IoTHubDeviceClient_SetOption(device_handle, OPTION_AUTO_URL_ENCODE_DECODE, &urlEncodeOn);
 
-		    //Mqtt client to recive lora messages from conduit lora server. localhost lora/+/up
+        //twin retrieve
+        (void)IoTHubDeviceClient_SetDeviceTwinCallback(device_handle, deviceTwinCallback, NULL);
+
+        //Mqtt client to recive lora messages from conduit lora server. localhost lora/+/up
         MQTT_CLIENT_HANDLE mqttHandle = mqtt_client_init(OnRecvCallback, OnOperationComplete, NULL, OnErrorComplete, NULL);
         if (mqttHandle == NULL)
         {
