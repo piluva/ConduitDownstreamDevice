@@ -103,16 +103,18 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
 
-    BUFFER_HANDLE decoded_payload;
     const char *data = json_object_get_string(lora_json, "data");
     const unsigned char* payload = BUFFER_u_char(Base64_Decoder(data));
     (void)printf("Payload: %s\r\n", payload);
+
     JSON_Value *lora_payload_value =NULL;
   	lora_payload_value = json_parse_string(payload);
   	JSON_Object *lora_payload_json;
     lora_payload_json = json_value_get_object(lora_payload_value);
-    if(data!=NULL)(void)json_object_set_string(root_object, "payload", json_object_get_string(lora_payload_json, "state"));
-    BUFFER_delete(decoded_payload);
+
+    if(data!=NULL)(void)json_object_set_string(root_object, "payload", json_object_get_string(lora_payload_json, "stateA"));
+
+    json_value_free(lora_payload_value);
 
     send_json_string = json_serialize_to_string_pretty(root_value);
     json_value_free(root_value);
