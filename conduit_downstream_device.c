@@ -31,8 +31,19 @@
 // Path to the Edge "owner" root CA certificate
 static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
 
+// Path to the Edge "owner" root CA certificate
+static const char* conn_string_file = "/home/CDS.conf";
+
 //mqtt lora client variables
-static const char* TOPIC_NAME_A = "lora/+/up";
+static const char* TOPIC_NAME = "lora/+/up";
+
+//IOT HUB
+IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
+
+const unsigned char* TwinPayload;
+
+//uMQTT
+MQTT_MESSAGE_HANDLE lastMsgHandle;
 
 static uint16_t PACKET_ID_VALUE = 11;
 
@@ -43,73 +54,18 @@ static bool new_message = false;
 
 static size_t g_message_count_send_confirmations = 0;
 
-MQTT_MESSAGE_HANDLE lastMsgHandle;
-
-IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
-
-const char* prevA = "X";
-const char* prevB = "X";
-
 #define PORT_NUM_UNENCRYPTED        1883
 
 // json values
 //char* deveui;
 //char* Id;
 
-const unsigned char* TwinPayload;
-/**
-    parse from incoming json twin
-*/
-/*static Sensor* parseFromJson(const char* json, DEVICE_TWIN_UPDATE_STATE update_state)
-{
-    JSON_Value* root_value = json_parse_string(json);
-    JSON_Object* root_object = json_value_get_object(root_value);
-
-    // Only desired properties:
-    JSON_Value* id_value;
-
-    JSON_Object* devices = json_object_dotget_object(root_object, "desired.devices");
-
-    if (update_state == DEVICE_TWIN_UPDATE_COMPLETE)
-    {
-        Id = json_object_dotget_string(devices, "");
-        deveui = json_object_dotget_value(root_object, "desired.deveui");
-    }
-    else
-    {
-        Id = json_object_dotget_value(root_object, "Id");
-        deveui = json_object_dotget_value(root_object, "deveui");
-    }
-00-80-00-00-00-01-05-cc
-00-80-00-00-00-01-05-ca
-CCONEM01
-    return Id;
-}*/
-
-const char* idFromEUI(const char* deveui) {
-
-  JSON_Value* root_value = json_parse_string(TwinPayload);
-  JSON_Object* Twin_Object = json_value_get_object(root_value);
-
-  JSON_Object* desired_devices = json_object_dotget_object(Twin_Object, "desired.devices");
-  //JSON_Object* device = json_object_get_object(desired_devices, "00-80-00-00-00-01-05-cc");
-
-  char str[27]; //+1 for NULL character.
-  strcpy(str, deveui);
-  strcat(str, ".id");
-  (void) printf("ESTE ES EL str: %s\r\n", str);
-  //const char* id = json_object_dotget_string(desired_devices, str);
-  const char* id = json_object_dotget_string(desired_devices, "desired.devices.00-80-00-00-00-01-05-cc.id");
-  (void) printf("ESTE ES EL ID: %s\r\n", id);
-
-  json_value_free(root_value);
-
-  return id;
-}
+// --------------------------------------------------------------------
 
 /**
-    twin callback
+    IOT_HUB FUNCTIONS
 */
+
 static void deviceTwinCallback(DEVICE_TWIN_UPDATE_STATE update_state, const unsigned char* payLoad, size_t size, void* userContextCallback)
 {
     (void)update_state;
@@ -118,9 +74,8 @@ static void deviceTwinCallback(DEVICE_TWIN_UPDATE_STATE update_state, const unsi
     if (update_state == DEVICE_TWIN_UPDATE_COMPLETE)
     {
         TwinPayload = payLoad;
+        (void) printf("TWIN UPDATED: %s\r\n", TwinPayload);
     }
-    (void) printf("callback llamado\r\n");
-    (void) printf("payload: %s\r\n", payLoad);
 }
 
 static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void* userContextCallback)
@@ -131,7 +86,8 @@ static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void
     (void)printf("Confirmation callback received for message %zu with result %s\r\n", g_message_count_send_confirmations, ENUM_TO_STRING(IOTHUB_CLIENT_CONFIRMATION_RESULT, result));
 }
 
-void sendToHub(char* message){
+void sendToHub(char* message)
+{
  (void)printf("Sending message: %s\r\n", message);
 
   IOTHUB_MESSAGE_HANDLE message_handle;
@@ -156,8 +112,23 @@ void sendToHub(char* message){
   IoTHubMessage_Destroy(message_handle);
 }
 
+static void connection_status_callback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void* user_context)
+{
+    (void)reason;
+    (void)user_context;
+    // This sample DOES NOT take into consideration network outages.
+    if (result == IOTHUB_CLIENT_CONNECTION_AUTHENTICATED)
+    {
+        (void)printf("The device client is connected to IoT Edge\r\n");
+    }
+    else
+    {
+        (void)printf("The device client has been disconnected\r\n");
+    }
+}
+
 /**
-    MQTT LORA FUNCTIONS
+    uMQTT LORA FUNCTIONS
 */
 
 static const char* QosToString(QOS_VALUE qosValue)
@@ -177,9 +148,9 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
-    (void)printf("\r\nIncoming on topic: %s\r\n",
+    (void)printf("\r\nIncoming msg on topic: %s\r\n",
         mqttmessage_getTopicName(msgHandle)
-        );
+    );
 
   // parse incoming mqtt lora message as parson
 	JSON_Value *lora_value=NULL;
@@ -196,51 +167,22 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
 
     //put desired propieties on json to send
     const char *deveui = json_object_get_string(lora_json, "deveui");
-    printf("este deveui = %s\r\n", deveui);
-    //replace deveui with id
-    const char* id = idFromEUI(deveui);
-    printf("este id = %s\r\n", id);
-    //if(deveui!=NULL){
-    (void)json_object_set_string(root_object, "id", id);
-  //}else{
-    //(void)json_object_set_string(root_object, "id", "niet");
-  //  }
+    if(deveui!=NULL)(void)json_object_set_string(root_object, "deveui", deveui);
 
     const char *time_ = json_object_get_string(lora_json, "time");
 		if(time_!=NULL)(void)json_object_set_string(root_object, "time", time_);
 
     const char *data = json_object_get_string(lora_json, "data");
+    if(data!=NULL)(void)json_object_set_string(root_object, "data", data);
     const unsigned char* payload = BUFFER_u_char(Base64_Decoder(data));
     (void)printf("Payload: %s\r\n", payload);
 
-    JSON_Value *lora_payload_value =NULL;
-  	lora_payload_value = json_parse_string(payload);
-  	JSON_Object *lora_payload_json;
-    lora_payload_json = json_value_get_object(lora_payload_value);
-
-    if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM01");
-    (void)printf("Payload: %s\r\n", prevA);
-    const char* A= json_object_get_string(lora_payload_json, "stateA");
-    if(prevA != A ){
-      prevA = A;
-      if(data!=NULL)(void)json_object_set_string(root_object, "estado", (char*) A);
-      sendToHub(json_serialize_to_string_pretty(root_value));
-    }
-
-    if(prevB != json_object_get_string(lora_payload_json, "stateB")){
-      prevB =json_object_get_string(lora_payload_json, "stateB");
-      if(deveui!=NULL)(void)json_object_set_string(root_object, "id", "CCONEM02");
-      if(data!=NULL)(void)json_object_set_string(root_object, "estado", json_object_get_string(lora_payload_json, "stateB"));
-      sendToHub(json_serialize_to_string_pretty(root_value));
-    }
-    json_value_free(lora_payload_value);
+    //send To iotHub
+    sendToHub(json_serialize_to_string_pretty(root_value));
 
     json_value_free(root_value);
-
-    //set flag to send
-
-
 	}
+
 	if(lora_value)json_value_free(lora_value);
 
 }
@@ -264,7 +206,7 @@ static void OnOperationComplete(MQTT_CLIENT_HANDLE handle, MQTT_CLIENT_EVENT_RES
             (void)printf("ConnAck function called\r\n");
 
             SUBSCRIBE_PAYLOAD subscribe[1];
-            subscribe[0].subscribeTopic = TOPIC_NAME_A;
+            subscribe[0].subscribeTopic = TOPIC_NAME;
             subscribe[0].qosReturn = DELIVER_AT_MOST_ONCE;
 
             if (mqtt_client_subscribe(handle, PACKET_ID_VALUE++, subscribe, sizeof(subscribe) / sizeof(subscribe[0])) != 0)
@@ -331,25 +273,6 @@ static void OnErrorComplete(MQTT_CLIENT_HANDLE handle, MQTT_CLIENT_EVENT_ERROR e
 }
 
 /**
-    Connection status
-*/
-static void connection_status_callback(IOTHUB_CLIENT_CONNECTION_STATUS result, IOTHUB_CLIENT_CONNECTION_STATUS_REASON reason, void* user_context)
-{
-    (void)reason;
-    (void)user_context;
-    // This sample DOES NOT take into consideration network outages.
-    if (result == IOTHUB_CLIENT_CONNECTION_AUTHENTICATED)
-    {
-        (void)printf("The device client is connected to IoT Edge\r\n");
-    }
-    else
-    {
-        (void)printf("The device client has been disconnected\r\n");
-    }
-}
-
-
-/**
     Read the certificate file and provide a null terminated string
     containing the certificate.
 */
@@ -402,11 +325,15 @@ static char *obtain_edge_ca_certificate(void)
     return result;
 }
 
-static char *getConnectionString(){
+/**
+    Read config file
+*/
+static char *getConnectionString()
+{
   char *result = NULL;
   FILE *cs_file;
 
-  cs_file = fopen("config", "r");
+  cs_file = fopen(conn_string_file, "r");
   if (cs_file == NULL)
   {
       printf("Error could not open config file for reading \r\n");
@@ -451,7 +378,9 @@ static char *getConnectionString(){
   return result;
 }
 
-///// ------------------------------------   MAIN
+/**
+    -------------------------------------------------   MAIN
+*/
 int main(void)
 {
   (void)printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
