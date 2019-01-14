@@ -407,11 +407,12 @@ int main(void)
     {
         // Setting message callback to get C2D messages
         //(void)IoTHubDeviceClient_SetMessageCallback(device_handle, receive_msg_callback, NULL);
+
         // Setting connection status callback to get indication of connection to iothub
         (void)IoTHubDeviceClient_SetConnectionStatusCallback(device_handle, connection_status_callback, NULL);
 
-        // Set any option that are necessary.
-        // For available options please see the iothub_sdk_options.md documentation
+        // Set constant interval for retry
+        (void) IoTHubDeviceClient_SetRetryPolicy(device_handle, IOTHUB_CLIENT_RETRY_INTERVAL, 0);
 
         // Turn tracing on/off
         bool traceOn = true;
@@ -484,9 +485,6 @@ int main(void)
 
 		}
 
- 		printf("\r\nPress any key to continue\r\n");
-        (void)getchar();
-
         // Clean up the iothub sdk handle
         IoTHubDeviceClient_Destroy(device_handle);
 
@@ -498,7 +496,10 @@ int main(void)
 	}
 
  	// Free all the sdk subsystem
-    IoTHub_Deinit();
+  IoTHub_Deinit();
+
+  printf("\r\nPress any key to continue\r\n");
+    (void)getchar();
 
  	return 0;
 }
