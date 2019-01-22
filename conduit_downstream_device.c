@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdarg.h>
 #include <stdint.h>
-
+#include <getopt.h>
 
 #include "parson.h"
 #include "mqtt_client_sample.h"
@@ -29,10 +29,10 @@
 
 
 // Path to the Edge "owner" root CA certificate
-static const char* edge_ca_cert_path = "/home/azure-iot-test-only.root.ca.cert.pem";
+static const char* edge_ca_cert_path = NULL; //"/home/azure-iot-test-only.root.ca.cert.pem";
 
 // Path to the Edge "owner" root CA certificate
-static const char* conn_string_file = "/home/CDS.conf";
+static const char* conn_string_file = NULL; //"/home/CDS.conf";
 
 //mqtt lora client variables
 static const char* TOPIC_NAME = "lora/+/up";
@@ -56,6 +56,7 @@ static size_t g_message_count_send_confirmations = 0;
 
 #define PORT_NUM_UNENCRYPTED        1883
 
+static int verbose_flag;
 // json values
 //char* deveui;
 //char* Id;
@@ -98,12 +99,12 @@ void sendToHub(char* message)
   // Set Message property
   (void)IoTHubMessage_SetMessageId(message_handle, "MSG_ID");
   (void)IoTHubMessage_SetCorrelationId(message_handle, "CORE_ID");
+
   //(void)IoTHubMessage_SetContentTypeSystemProperty(message_handle, "application%2fjson");
   (void)IoTHubMessage_SetContentEncodingSystemProperty(message_handle, "utf-8");
 
   // Add custom properties to message
   //(void)IoTHubMessage_SetProperty(message_handle, "property_key", "property_value");
-
   IoTHubDeviceClient_SendEventAsync(device_handle, message_handle, send_confirm_callback, NULL);
 
   json_free_serialized_string(message);
@@ -203,7 +204,7 @@ static void OnOperationComplete(MQTT_CLIENT_HANDLE handle, MQTT_CLIENT_EVENT_RES
     {
         case MQTT_CLIENT_ON_CONNACK:
         {
-            (void)printf("ConnAck function called\r\n");
+            (void)printf("local mqtt ConnAck function called\r\n");
 
             SUBSCRIBE_PAYLOAD subscribe[1];
             subscribe[0].subscribeTopic = TOPIC_NAME;
@@ -381,8 +382,38 @@ static char *getConnectionString()
 /**
     -------------------------------------------------   MAIN
 */
-int main(void)
+int main(int argc, char **argv)
 {
+  static struct option long_options[] =
+        {
+          /* These options set a flag. */
+          {"verbose", no_argument,       &verbose_flag, 1},
+          {"brief",   no_argument,       &verbose_flag, 0},
+          /* These options don’t set a flag.
+             We distinguish them by their indices. */
+          {"certs",  required_argument, 0, 'c'},
+          {"config",    required_argument, 0, 's'},
+          {0, 0, 0, 0}
+        };
+      /* getopt_long stores the option index here. */
+  int c;
+  int option_index = 0;
+
+  while (c != -1){
+      c = getopt_long (argc, argv, "abc:d:f:", long_options, &option_index);
+     switch (c)
+       {
+       case 's':
+        printf ("connection string file set to: `%s'\n", optarg);
+        conn_string_file = optarg;
+         break;
+        case 'c':
+          printf ("certs file set to: `%s'\n", optarg);
+          edge_ca_cert_path = optarg;
+         break;
+       }
+   }
+
   (void)printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
 
 	IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
@@ -415,8 +446,8 @@ int main(void)
         (void) IoTHubDeviceClient_SetRetryPolicy(device_handle, IOTHUB_CLIENT_RETRY_INTERVAL, 0);
 
         // Turn tracing on/off
-        bool traceOn = true;
-        (void)IoTHubDeviceClient_SetOption(device_handle, OPTION_LOG_TRACE, &traceOn);
+        //bool traceOn = true;
+        //(void)IoTHubDeviceClient_SetOption(device_handle, OPTION_LOG_TRACE, &traceOn);
 
         // Provide the Azure IoT device client with the Edge root
         // X509 CA certificate that was used to setup the Edge runtime
