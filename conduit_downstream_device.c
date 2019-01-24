@@ -57,9 +57,31 @@ static size_t g_message_count_send_confirmations = 0;
 #define PORT_NUM_UNENCRYPTED        1883
 
 static int verbose_flag;
-// json values
-//char* deveui;
-//char* Id;
+
+// string splitting
+int split (const char *txt, char delim, char ***tokens)
+{
+    int *tklen, *t, count = 1;
+    char **arr, *p = (char *) txt;
+
+    while (*p != '\0') if (*p++ == delim) count += 1;
+    t = tklen = calloc (count, sizeof (int));
+    for (p = (char *) txt; *p != '\0'; p++) *p == delim ? *t++ : (*t)++;
+    *tokens = arr = malloc (count * sizeof (char *));
+    t = tklen;
+    p = *arr++ = calloc (*(t++) + 1, sizeof (char *));
+    while (*txt != '\0')
+    {
+        if (*txt == delim)
+        {
+            p = *arr++ = calloc (*(t++) + 1, sizeof (char *));
+            txt++;
+        }
+        else *p++ = *txt++;
+    }
+    free (tklen);
+    return count;
+}
 
 // --------------------------------------------------------------------
 
@@ -426,6 +448,10 @@ int main(int argc, char **argv)
  	(void)printf("Creating IoTHub handle\r\n");
 
   char *connectionString = getConnectionString(); //read connection string from config file
+  //Get hubName from connection string to use as clientid in mqtt broker.
+  char ** hubName = NULL;
+  split(connectionString, '.', &hubName);
+  printf("IoT Hub: %s\n", hubName[0]);
 
   // Create the iothub handle here
   device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
@@ -474,7 +500,7 @@ int main(int argc, char **argv)
             mqtt_client_set_trace(mqttHandle, false, false);
 
             MQTT_CLIENT_OPTIONS options = { 0 };
-            options.clientId = "csdk"; //id
+            options.clientId = hubName[0]; //id from hub name.
             options.willMessage = NULL;
             options.username = NULL;
             options.password = NULL;
@@ -502,7 +528,7 @@ int main(int argc, char **argv)
                         mqtt_client_dowork(mqttHandle);
 
                     } while (g_continue);
-                  }
+                }
                 xio_close(xio, OnCloseComplete, NULL);
 
                 // Wait for the close connection gets called
