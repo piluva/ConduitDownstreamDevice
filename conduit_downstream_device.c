@@ -106,13 +106,16 @@ static void send_confirm_callback(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void
     (void)userContextCallback;
     // When a message is sent this callback will get envoked
     g_message_count_send_confirmations++;
-    (void)printf("Confirmation callback received for message %zu with result %s\r\n", g_message_count_send_confirmations, ENUM_TO_STRING(IOTHUB_CLIENT_CONFIRMATION_RESULT, result));
+    if(verbose_flag){
+      (void)printf("Confirmation callback received for message %zu with result %s\r\n", g_message_count_send_confirmations, ENUM_TO_STRING(IOTHUB_CLIENT_CONFIRMATION_RESULT, result));
+    }
 }
 
 void sendToHub(char* message)
 {
- (void)printf("Sending message: %s\r\n", message);
-
+  if(verbose_flag){
+    (void)printf("Sending message: %s\r\n", message);
+  }
   IOTHUB_MESSAGE_HANDLE message_handle;
 
   // Construct the iothub message from a string
@@ -171,11 +174,12 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     (void)context;
     const APP_PAYLOAD* appMsg = mqttmessage_getApplicationMsg(msgHandle);
 
+  if(verbose_flag){
     (void)printf("\r\nIncoming msg on topic: %s\r\n",
         mqttmessage_getTopicName(msgHandle)
     );
-
-  // parse incoming mqtt lora message as parson
+  }
+  // parse incoming mqtt lora message as json
 	JSON_Value *lora_value=NULL;
 	lora_value = json_parse_string(appMsg->message);
 	JSON_Object *lora_json;
@@ -198,8 +202,9 @@ static void OnRecvCallback(MQTT_MESSAGE_HANDLE msgHandle, void* context)
     const char *data = json_object_get_string(lora_json, "data");
     if(data!=NULL)(void)json_object_set_string(root_object, "data", data);
     const unsigned char* payload = BUFFER_u_char(Base64_Decoder(data));
-    (void)printf("Payload: %s\r\n", payload);
-
+    if(verbose_flag){
+      (void)printf("Payload: %s\r\n", payload);
+    }
     //send To iotHub
     sendToHub(json_serialize_to_string_pretty(root_value));
 
@@ -429,14 +434,14 @@ int main(int argc, char **argv)
         printf ("connection string file set to: `%s'\n", optarg);
         conn_string_file = optarg;
          break;
-        case 'c':
+       case 'c':
           printf ("certs file set to: `%s'\n", optarg);
           edge_ca_cert_path = optarg;
          break;
        }
    }
 
-  (void)printf("MULTITECH CONDUIT DOWSTREAM DEVICE V0.1 2018\r\n\r\n");
+  (void)printf("MULTITECH CONDUIT DOWSTREAM DEVICE V1.0 2019\r\n\r\n");
 
 	IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
 	protocol = MQTT_Protocol;
@@ -448,10 +453,10 @@ int main(int argc, char **argv)
  	(void)printf("Creating IoTHub handle\r\n");
 
   char *connectionString = getConnectionString(); //read connection string from config file
-  //Get hubName from connection string to use as clientid in mqtt broker.
+  // Get hubName from connection string to use as clientid in mqtt broker.
   char ** hubName = NULL;
   split(connectionString, '.', &hubName);
-  printf("IoT Hub: %s\n", hubName[0]);
+  printf("IoT Hub: %s\n", hubName[0]); // Get only first part.
 
   // Create the iothub handle here
   device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
